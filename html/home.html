@@ -22,8 +22,8 @@
                 </div>
               </td></tr>
               <tr><td>Network SSID</td><td id="wifi-ssid"></td></tr>
-              <tr><td>WiFI status</td><td id="wifi-status"></td></tr>
-              <tr><td>WiFI address</td><td id="wifi-ip"></td></tr>
+              <tr><td>WiFi status</td><td id="wifi-status"></td></tr>
+              <tr><td>WiFi address</td><td id="wifi-ip"></td></tr>
               <tr><td>SLIP status</td><td class="system-slip"></td></tr>
               <tr><td>MQTT status</td><td class="system-mqtt"></td></tr>
               <tr><td>Serial baud</td><td class="system-baud"></td></tr>
@@ -32,7 +32,7 @@
           <div class="card">
             <h1>Info</h1>
             <p style="margin-bottom:0;">The JeeLabs esp-link firmware bridges the ESP8266
-            serial port to WiFI and can
+            serial port to WiFi and can
             program microcontrollers over the serial port, in particular Arduinos, AVRs, and
             NXP's LPC800 and other ARM processors. Typical avrdude command line to
             program an Arduino:</p>
@@ -40,9 +40,9 @@
               /home/arduino/hardware/tools/avrdude&nbsp;\<br>
               &nbsp;&nbsp;-DV -patmega328p \<br>
               &nbsp;&nbsp;-Pnet:esp-link.local:23 \<br>
-              &nbsp;&nbsp;-carduino -b115200 -U -C \<br>
-              &nbsp;&nbsp;/home/arduino/hardware/tools/avrdude.conf&nbsp;\<br>
-              &nbsp;&nbsp;flash:w:my_sketch.hex:i
+              &nbsp;&nbsp;-carduino -b115200 \<br>
+              &nbsp;&nbsp;-U flash:w:my_sketch.hex:i\<br>
+              &nbsp;&nbsp;-C /home/arduino/hardware/tools/avrdude.conf
             </div>
             <p>where <tt>-Pnet:esp-link.local:23</tt> tells avrdude to connect to port 23 of esp-link.
             You can substitute the IP address of your esp-link for esp-link.local if necessary.
@@ -79,7 +79,7 @@
                 <div class="pure-control-group">
                   <label for="pin-conn">Conn LED</label>
                   <select id="pin-conn"></select>
-                  <div class="popup">LED to show wifi connectivity</div>
+                  <div class="popup">LED to show WiFi connectivity</div>
                 </div>
                 <div class="pure-control-group">
                   <label for="pin-ser">Serial LED</label>
@@ -109,8 +109,8 @@
             <h1>System details</h1>
             <div id="system-spinner" class="spinner spinner-small"></div>
             <table id="system-table" class="pure-table pure-table-horizontal" hidden><tbody>
-            <tr><td>WiFI mode</td><td id="wifi-mode"></td></tr>
-            <tr><td>WiFI channel</td><td id="wifi-chan"></td></tr>
+            <tr><td>WiFi mode</td><td id="wifi-mode"></td></tr>
+            <tr><td>WiFi channel</td><td id="wifi-chan"></td></tr>
             <tr><td>Flash chip ID</td><td>
               <div>
                 <span class="system-id"></span>
@@ -123,10 +123,16 @@
                 <div class="popup pop-left">Size configured into bootloader, must match chip size</div>
               </div>
             </td></tr>
+            <tr><td>Webpage size</td><td>
+              <div>
+                <span class="system-upload-size"></span>
+                <div class="popup pop-left">The maximal size of the custom web page a user can upload.</div>
+              </div>
+            </td></tr>
             <tr><td>Current partition</td><td class="system-partition"></td></tr>
             <tr><td colspan=2 class="popup-target">Description:<br>
                 <div class="click-to-edit system-description">
-                  <div class="edit-off"></div>
+                  <span class="edit-off" style="display:block; width:auto;"></span>
                   <textarea class="edit-on" rows=3 maxlength=127 hidden> </textarea>
                   <div class="popup">Click to edit!<br>A short description or memo for this esp-link
                     module, 128 chars max</div>

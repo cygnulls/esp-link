@@ -151,7 +151,7 @@ function toggleClass(el, cl) {
 
 //===== AJAX
 
-function ajaxReq(method, url, ok_cb, err_cb) {
+function ajaxReq(method, url, ok_cb, err_cb, data) {
   var xhr = j();
   xhr.open(method, url, true);
   var timeout = setTimeout(function() {
@@ -173,7 +173,7 @@ function ajaxReq(method, url, ok_cb, err_cb) {
   }
 //  console.log("XHR send:", method, url);
   try {
-    xhr.send();
+    xhr.send(data);
   } catch(err) {
     console.log("XHR EXC :", method, url, "->", err);
     err_cb(599, err);
@@ -273,6 +273,7 @@ onLoad(function() {
       var v = $("#version");
       if (v != null) { v.innerHTML = data.version; }
 
+      $('title')[0].innerHTML = data["name"];
       setEditToClick("system-name", data["name"]);
     }, function() { setTimeout(getMenu, 1000); });
   };
@@ -302,19 +303,6 @@ function getWifiInfo() {
 }
 
 //===== System info
-
-function setEditToClick(klass, value) {
-  domForEach($("."+klass), function(div) {
-    if (div.children.length > 0) {
-      domForEach(div.children, function(el) {
-        if (el.nodeName === "INPUT") el.value = value;
-        else if (el.nodeName !== "DIV") el.innerHTML = value;
-      });
-    } else {
-      div.innerHTML = value;
-    }
-  });
-}
 
 function showSystemInfo(data) {
   Object.keys(data).forEach(function(v) {
@@ -366,6 +354,18 @@ function makeAjaxInput(klass, field) {
   });
 }
 
+function setEditToClick(klass, value) {
+  domForEach($("."+klass), function(div) {
+    if (div.children.length > 0) {
+      domForEach(div.children, function(el) {
+        if (el.nodeName === "INPUT") el.value = value;
+        else if (el.nodeName !== "DIV") el.innerHTML = value;
+      });
+    } else {
+      div.innerHTML = value;
+    }
+  });
+}
 
 //===== Notifications
 
@@ -473,7 +473,7 @@ function setPins(ev) {
     url += sep + p + "=" + $("#pin-"+p).value;
     sep = "&";
   });
-  url += "&rxpup=" + ($("#pin-rxpup").selected ? "1" : "0");
+  url += "&rxpup=" + ($("#pin-rxpup").checked ? "1" : "0");
 //  console.log("set pins: " + url);
   ajaxSpin("POST", url, function() {
     showNotification("Pin assignment changed");

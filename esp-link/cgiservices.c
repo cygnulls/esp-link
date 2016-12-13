@@ -2,9 +2,11 @@
 #include "cgiwifi.h"
 #include "cgi.h"
 #include "config.h"
-#include "syslog.h"
 #include "sntp.h"
 #include "cgimqtt.h"
+#ifdef SYSLOG
+#include "syslog.h"
+#endif
 
 #ifdef CGISERVICES_DBG
 #define DBG(format, ...) do { os_printf(format, ## __VA_ARGS__); } while(0)
@@ -66,17 +68,19 @@ int ICACHE_FLASH_ATTR cgiSystemInfo(HttpdConnData *connData) {
       "\"name\": \"%s\", "
       "\"reset cause\": \"%d=%s\", "
       "\"size\": \"%s\", "
-      "\"id\": \"0x%02lX 0x%04lX\", "
+      "\"upload-size\": \"%d\", "
+      "\"id\": \"0x%02X 0x%04X\", "
       "\"partition\": \"%s\", "
       "\"slip\": \"%s\", "
       "\"mqtt\": \"%s/%s\", "
-      "\"baud\": \"%ld\", "
+      "\"baud\": \"%d\", "
       "\"description\": \"%s\""
     " }",
     flashConfig.hostname,
     rst_info->reason,
     rst_codes[rst_info->reason],
     flash_maps[system_get_flash_size_map()],
+    getUserPageSectionEnd()-getUserPageSectionStart(),
     fid & 0xff, (fid & 0xff00) | ((fid >> 16) & 0xff),
     part_id ? "user2.bin" : "user1.bin",
     flashConfig.slip_enable ? "enabled" : "disabled",
@@ -92,10 +96,10 @@ int ICACHE_FLASH_ATTR cgiSystemInfo(HttpdConnData *connData) {
 }
 
 void ICACHE_FLASH_ATTR cgiServicesSNTPInit() {
-  if (flashConfig.sntp_server[0] != '\0') {    
+  if (flashConfig.sntp_server[0] != '\0') {
     sntp_stop();
     if (true == sntp_set_timezone(flashConfig.timezone_offset)) {
-      sntp_setservername(0, flashConfig.sntp_server);  
+      sntp_setservername(0, flashConfig.sntp_server);
       sntp_init();
     }
     DBG("SNTP timesource set to %s with offset %d\n", flashConfig.sntp_server, flashConfig.timezone_offset);
@@ -107,23 +111,27 @@ int ICACHE_FLASH_ATTR cgiServicesInfo(HttpdConnData *connData) {
 
   if (connData->conn == NULL) return HTTPD_CGI_DONE; // Connection aborted. Clean up.
 
-  os_sprintf(buff, 
+  os_sprintf(buff,
     "{ "
+#ifdef SYSLOG
       "\"syslog_host\": \"%s\", "
       "\"syslog_minheap\": %d, "
       "\"syslog_filter\": %d, "
       "\"syslog_showtick\": \"%s\", "
       "\"syslog_showdate\": \"%s\", "
+#endif
       "\"timezone_offset\": %d, "
       "\"sntp_server\": \"%s\", "
       "\"mdns_enable\": \"%s\", "
       "\"mdns_servername\": \"%s\""
-    " }",    
+    " }",
+#ifdef SYSLOG
     flashConfig.syslog_host,
     flashConfig.syslog_minheap,
     flashConfig.syslog_filter,
     flashConfig.syslog_showtick ? "enabled" : "disabled",
     flashConfig.syslog_showdate ? "enabled" : "disabled",
+#endif
     flashConfig.timezone_offset,
     flashConfig.sntp_server,
     flashConfig.mdns_enable ? "enabled" : "disabled",
@@ -151,9 +159,11 @@ int ICACHE_FLASH_ATTR cgiServicesSet(HttpdConnData *connData) {
   syslog |= getBoolArg(connData, "syslog_showdate", &flashConfig.syslog_showdate);
   if (syslog < 0) return HTTPD_CGI_DONE;
 
+#ifdef SYSLOG
   if (syslog > 0) {
     syslog_init(flashConfig.syslog_host);
   }
+#endif
 
   int8_t sntp = 0;
   sntp |= getInt8Arg(connData, "timezone_offset", &flashConfig.timezone_offset);
@@ -168,7 +178,7 @@ int ICACHE_FLASH_ATTR cgiServicesSet(HttpdConnData *connData) {
   int8_t mdns = 0;
   mdns |= getBoolArg(connData, "mdns_enable", &flashConfig.mdns_enable);
   if (mdns < 0) return HTTPD_CGI_DONE;
-    
+
   if (mdns > 0) {
     if (flashConfig.mdns_enable){
       DBG("Services: MDNS Enabled\n");

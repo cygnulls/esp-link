@@ -5,6 +5,7 @@
 #include "cgi.h"
 #include "uart.h"
 #include "serbridge.h"
+#include "serled.h"
 #include "config.h"
 #include "console.h"
 
@@ -66,7 +67,7 @@ ajaxConsoleBaud(HttpdConnData *connData) {
   len = httpdFindArg(connData->getArgs, "rate", buff, sizeof(buff));
   if (len > 0) {
     int rate = atoi(buff);
-    if (rate >= 9600 && rate <= 1000000) {
+    if (rate >= 300 && rate <= 1000000) {
       uart0_baud(rate);
       flashConfig.baud_rate = rate;
       status = configSave() ? 200 : 400;
@@ -76,24 +77,56 @@ ajaxConsoleBaud(HttpdConnData *connData) {
   }
 
   jsonHeader(connData, status);
-  os_sprintf(buff, "{\"rate\": %ld}", flashConfig.baud_rate);
+  os_sprintf(buff, "{\"rate\": %d}", flashConfig.baud_rate);
   httpdSend(connData, buff, -1);
   return HTTPD_CGI_DONE;
 }
+
+int ICACHE_FLASH_ATTR
+ajaxConsoleFormat(HttpdConnData *connData) {
+  if (connData->conn==NULL) return HTTPD_CGI_DONE; // Connection aborted. Clean up.
+  char buff[16];
+  int len, status = 400;
+  uint32 conf0;
+
+  len = httpdFindArg(connData->getArgs, "fmt", buff, sizeof(buff));
+  if (len >= 3) {
+    int c = buff[0];
+    if (c >= '5' && c <= '8')
+       flashConfig.data_bits = c - '5' + FIVE_BITS;
+    if (buff[1] == 'N' || buff[1] == 'E')
+       flashConfig.parity = buff[1] == 'E' ? EVEN_BITS : NONE_BITS;
+    if (buff[2] == '1' || buff[2] == '2')
+       flashConfig.stop_bits = buff[2] == '2' ? TWO_STOP_BIT : ONE_STOP_BIT;
+    conf0 = CALC_UARTMODE(flashConfig.data_bits, flashConfig.parity, flashConfig.stop_bits);
+    uart_config(0, flashConfig.baud_rate, conf0);
+    status = configSave() ? 200 : 400;
+  } else if (connData->requestType == HTTPD_METHOD_GET) {
+    status = 200;
+  }
+
+  jsonHeader(connData, status);
+  os_sprintf(buff, "{\"fmt\": \"%c%c%c\"}", flashConfig.data_bits + '5',
+      flashConfig.parity ? 'E' : 'N', flashConfig.stop_bits ? '2': '1');
+  httpdSend(connData, buff, -1);
+  return HTTPD_CGI_DONE;
+}
+
 
 int ICACHE_FLASH_ATTR
 ajaxConsoleSend(HttpdConnData *connData) {
   if (connData->conn==NULL) return HTTPD_CGI_DONE; // Connection aborted. Clean up.
   char buff[2048];
   int len, status = 400;
-  
+
   // figure out where to start in buffer based on URI param
   len = httpdFindArg(connData->getArgs, "text", buff, sizeof(buff));
   if (len > 0) {
+    serledFlash(50); // short blink on serial LED
     uart0_tx_buffer(buff, len);
     status = 200;
   }
-  
+
   jsonHeader(connData, status);
   return HTTPD_CGI_DONE;
 }

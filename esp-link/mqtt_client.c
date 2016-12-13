@@ -5,7 +5,7 @@
 #include "mqtt.h"
 
 #ifdef MQTTCLIENT_DBG
-#define DBG(format, ...) do { os_printf(format, ## __VA_ARGS__) } while(0)
+#define DBG(format, ...) do { os_printf(format, ## __VA_ARGS__); } while(0)
 #else
 #define DBG(format, ...) do { } while(0)
 #endif
@@ -18,34 +18,31 @@ static MqttCallback published_cb;
 static MqttDataCallback data_cb;
 
 void ICACHE_FLASH_ATTR
-mqttConnectedCb(uint32_t *args) {
+mqttConnectedCb(MQTT_Client* client) {
   DBG("MQTT Client: Connected\n");
-  //MQTT_Client* client = (MQTT_Client*)args;
   //MQTT_Subscribe(client, "system/time", 0); // handy for testing
   if (connected_cb)
-    connected_cb(args);
+    connected_cb(client);
 }
 
 void ICACHE_FLASH_ATTR
-mqttDisconnectedCb(uint32_t *args) {
-//  MQTT_Client* client = (MQTT_Client*)args;
+mqttDisconnectedCb(MQTT_Client* client) {
   DBG("MQTT Client: Disconnected\n");
   if (disconnected_cb)
-    disconnected_cb(args);
+    disconnected_cb(client);
 }
 
 void ICACHE_FLASH_ATTR
-mqttPublishedCb(uint32_t *args) {
-//  MQTT_Client* client = (MQTT_Client*)args;
+mqttPublishedCb(MQTT_Client* client) {
   DBG("MQTT Client: Published\n");
   if (published_cb)
-    published_cb(args);
+    published_cb(client);
 }
 
 void ICACHE_FLASH_ATTR
-mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const char *data, uint32_t data_len) {
-  //  MQTT_Client* client = (MQTT_Client*)args;
-
+mqttDataCb(MQTT_Client* client, const char* topic, uint32_t topic_len,
+    const char *data, uint32_t data_len)
+{
 #ifdef MQTTCLIENT_DBG
   char *topicBuf = (char*)os_zalloc(topic_len + 1);
   char *dataBuf = (char*)os_zalloc(data_len + 1);
@@ -62,14 +59,14 @@ mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const char *da
 #endif
 
   if (data_cb)
-    data_cb(args, topic, topic_len, data, data_len);
+    data_cb(client, topic, topic_len, data, data_len);
 }
 
 void ICACHE_FLASH_ATTR
 wifiStateChangeCb(uint8_t status)
 {
   if (flashConfig.mqtt_enable) {
-    if (status == wifiGotIP && mqttClient.connState != TCP_CONNECTING) {
+    if (status == wifiGotIP && mqttClient.connState < TCP_CONNECTING) {
       MQTT_Connect(&mqttClient);
     }
     else if (status == wifiIsDisconnected && mqttClient.connState == TCP_CONNECTING) {
@@ -90,8 +87,9 @@ mqtt_client_init()
   MQTT_OnPublished(&mqttClient, mqttPublishedCb);
   MQTT_OnData(&mqttClient, mqttDataCb);
 
-  if (flashConfig.mqtt_enable && strlen(flashConfig.mqtt_host) > 0)
-    MQTT_Connect(&mqttClient);
+  // Don't connect now, wait for a wifi status change callback
+  //if (flashConfig.mqtt_enable && strlen(flashConfig.mqtt_host) > 0)
+  //  MQTT_Connect(&mqttClient);
 
   wifiAddStateChangeCb(wifiStateChangeCb);
 }

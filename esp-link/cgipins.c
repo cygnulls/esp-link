@@ -34,7 +34,7 @@ int ICACHE_FLASH_ATTR cgiPinsGet(HttpdConnData *connData) {
   len = os_sprintf(buff,
       "{ \"reset\":%d, \"isp\":%d, \"conn\":%d, \"ser\":%d, \"swap\":%d, \"rxpup\":%d }",
       flashConfig.reset_pin, flashConfig.isp_pin, flashConfig.conn_led_pin,
-      flashConfig.ser_led_pin, !!flashConfig.swap_uart, 1);
+      flashConfig.ser_led_pin, !!flashConfig.swap_uart, !!flashConfig.rx_pullup);
 
   jsonHeader(connData, 200);
   httpdSend(connData, buff, len);
@@ -49,7 +49,7 @@ int ICACHE_FLASH_ATTR cgiPinsSet(HttpdConnData *connData) {
 
   int8_t ok = 0;
   int8_t reset, isp, conn, ser;
-  bool swap, rxpup;
+  uint8_t swap, rxpup;
   ok |= getInt8Arg(connData, "reset", &reset);
   ok |= getInt8Arg(connData, "isp", &isp);
   ok |= getInt8Arg(connData, "conn", &conn);

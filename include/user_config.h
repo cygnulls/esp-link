@@ -19,19 +19,20 @@
 #define CONFIG_DBG
 #define LOG_DBG
 #define STATUS_DBG
-#undef HTTPD_DBG
+#define HTTPD_DBG
 #define MQTT_DBG
 #define MQTTCMD_DBG
+#define MQTTCLIENT_DBG
 #undef PKTBUF_DBG
 #define REST_DBG
 #define RESTCMD_DBG
 #define SERBR_DBG
 #define SERLED_DBG
-#undef SLIP_DBG
+#define SLIP_DBG
 #define UART_DBG
 #define MDNS_DBG
 #define OPTIBOOT_DBG
-#define SYSLOG_DBG
+#undef SYSLOG_DBG
 #define CGISERVICES_DBG
 
 // If defined, the default hostname for DHCP will include the chip ID to make it unique

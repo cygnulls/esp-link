@@ -19,6 +19,7 @@
 #include "cgimqtt.h"
 #include "cgiflash.h"
 #include "cgioptiboot.h"
+#include "cgiwebserversetup.h"
 #include "auth.h"
 #include "espfs.h"
 #include "uart.h"
@@ -29,13 +30,28 @@
 #include "config.h"
 #include "log.h"
 #include "gpio.h"
-#include "syslog.h"
 #include "cgiservices.h"
+#include "web-server.h"
 
-#define NOTICE(format, ...) do {	                                          \
-	LOG_NOTICE(format, ## __VA_ARGS__ );                                      \
-	os_printf(format "\n", ## __VA_ARGS__);                                   \
+#ifdef SYSLOG
+#include "syslog.h"
+#define NOTICE(format, ...) do {                                            \
+  LOG_NOTICE(format, ## __VA_ARGS__ );                                      \
+  os_printf(format "\n", ## __VA_ARGS__);                                   \
 } while ( 0 )
+#else
+#define NOTICE(format, ...) do {                                            \
+  os_printf(format "\n", ## __VA_ARGS__);                                   \
+} while ( 0 )
+#endif
+
+#ifdef MEMLEAK_DEBUG
+#include "mem.h"
+bool ICACHE_FLASH_ATTR check_memleak_debug_enable(void)
+{
+    return MEMLEAK_DEBUG_ENABLE;
+}
+#endif
 
 /*
 This is the main url->function dispatching data struct.
@@ -60,6 +76,7 @@ HttpdBuiltInUrl builtInUrls[] = {
   { "/log/reset", cgiReset, NULL },
   { "/console/reset", ajaxConsoleReset, NULL },
   { "/console/baud", ajaxConsoleBaud, NULL },
+  { "/console/fmt", ajaxConsoleFormat, NULL },
   { "/console/text", ajaxConsole, NULL },
   { "/console/send", ajaxConsoleSend, NULL },
   //Enable the line below to protect the WiFi configuration with an username/password combo.
@@ -72,6 +89,8 @@ HttpdBuiltInUrl builtInUrls[] = {
   { "/wifi/connstatus", cgiWiFiConnStatus, NULL },
   { "/wifi/setmode", cgiWiFiSetMode, NULL },
   { "/wifi/special", cgiWiFiSpecial, NULL },
+  { "/wifi/apinfo", cgiApSettingsInfo, NULL },
+  { "/wifi/apchange", cgiApSettingsChange, NULL },
   { "/system/info", cgiSystemInfo, NULL },
   { "/system/update", cgiSystemSet, NULL },
   { "/services/info", cgiServicesInfo, NULL },
@@ -79,14 +98,15 @@ HttpdBuiltInUrl builtInUrls[] = {
   { "/pins", cgiPins, NULL },
 #ifdef MQTT
   { "/mqtt", cgiMqtt, NULL },
-#endif  
+#endif
+  { "/web-server/upload", cgiWebServerSetupUpload, NULL },
+  { "*.json", WEB_CgiJsonHook, NULL }, //Catch-all cgi JSON queries
   { "*", cgiEspFsHook, NULL }, //Catch-all cgi function for the filesystem
   { NULL, NULL, NULL }
 };
 
 #ifdef SHOW_HEAP_USE
 static ETSTimer prHeapTimer;
-
 static void ICACHE_FLASH_ATTR prHeapTimerCb(void *arg) {
   os_printf("Heap: %ld\n", (unsigned long)system_get_free_heap_size());
 }
@@ -102,61 +122,62 @@ extern uint32_t _binary_espfs_img_start;
 extern void app_init(void);
 extern void mqtt_client_init(void);
 
-void user_rf_pre_init(void) {
+void ICACHE_FLASH_ATTR
+user_rf_pre_init(void) {
   //default is enabled
   system_set_os_print(DEBUG_SDK);
 }
 
+/* user_rf_cal_sector_set is a required function that is called by the SDK to get a flash
+ * sector number where it can store RF calibration data. This was introduced with SDK 1.5.4.1
+ * and is necessary because Espressif ran out of pre-reserved flash sectors. Ooops...  */
+uint32 ICACHE_FLASH_ATTR
+user_rf_cal_sector_set(void) {
+  uint32_t sect = 0;
+  switch (system_get_flash_size_map()) {
+  case FLASH_SIZE_4M_MAP_256_256: // 512KB
+    sect = 128 - 10; // 0x76000
+  default:
+    sect = 128; // 0x80000
+  }
+  return sect;
+}
+
 // Main routine to initialize esp-link.
-void user_init(void) {
+void ICACHE_FLASH_ATTR
+user_init(void) {
+  // uncomment the following three lines to see flash config messages for troubleshooting
+  //uart_init(115200, 115200);
+  //logInit();
+  //os_delay_us(100000L);
   // get the flash config so we know how to init things
-//  configWipe(); // uncomment to reset the config for testing purposes
+  //configWipe(); // uncomment to reset the config for testing purposes
   bool restoreOk = configRestore();
-  // init gpio pin registers
+  // Init gpio pin registers
   gpio_init();
   gpio_output_set(0, 0, 0, (1<<15)); // some people tie it to GND, gotta ensure it's disabled
   // init UART
-  uart_init(flashConfig.baud_rate, 115200);
+  uart_init(CALC_UARTMODE(flashConfig.data_bits, flashConfig.parity, flashConfig.stop_bits),
+            flashConfig.baud_rate, 115200);
   logInit(); // must come after init of uart
-  // say hello (leave some time to cause break in TX after boot loader's msg
+  // Say hello (leave some time to cause break in TX after boot loader's msg
   os_delay_us(10000L);
   os_printf("\n\n** %s\n", esp_link_version);
   os_printf("Flash config restore %s\n", restoreOk ? "ok" : "*FAILED*");
-
-#if defined(STA_SSID) && defined(STA_PASS)
-  int x = wifi_get_opmode() & 0x3;
-  if (x == 2) {
-    // we only force the STA settings when a full flash of the module has been made, which
-    // resets the wifi settings not to have anything configured
-    struct station_config stconf;
-    wifi_station_get_config(&stconf);
-
-    if (os_strlen((char*)stconf.ssid) == 0 && os_strlen((char*)stconf.password) == 0) {
-      os_strncpy((char*)stconf.ssid, VERS_STR(STA_SSID), 32);
-      os_strncpy((char*)stconf.password, VERS_STR(STA_PASS), 64);
-#ifdef CGIWIFI_DBG
-      os_printf("Wifi pre-config trying to connect to AP %s pw %s\n",
-          (char*)stconf.ssid, (char*)stconf.password);
-#endif
-      wifi_set_opmode(3); // sta+ap, will switch to sta-only 15 secs after connecting
-      stconf.bssid_set = 0;
-      wifi_station_set_config(&stconf);
-    }
-  }
-#endif
-
   // Status LEDs
   statusInit();
   serledInit();
   // Wifi
   wifiInit();
-
   // init the flash filesystem with the html stuff
-  espFsInit(&_binary_espfs_img_start);
+  espFsInit(espLinkCtx, &_binary_espfs_img_start, ESPFS_MEMORY);
+
   //EspFsInitResult res = espFsInit(&_binary_espfs_img_start);
   //os_printf("espFsInit %s\n", res?"ERR":"ok");
   // mount the http handlers
   httpdInit(builtInUrls, 80);
+  WEB_Init();
+
   // init the wifi-serial transparent bridge (port 23)
   serbridgeInit(23, 2323);
   uart_add_recv_cb(&serbridgeUartCb);
@@ -172,19 +193,22 @@ void user_init(void) {
     rst_info->exccause, rst_info->epc1, rst_info->epc2, rst_info->epc3,
     rst_info->excvaddr, rst_info->depc);
   uint32_t fid = spi_flash_get_id();
-  NOTICE("Flash map %s, manuf 0x%02lX chip 0x%04lX", flash_maps[system_get_flash_size_map()],
+  NOTICE("Flash map %s, manuf 0x%02X chip 0x%04X", flash_maps[system_get_flash_size_map()],
       fid & 0xff, (fid&0xff00)|((fid>>16)&0xff));
-  NOTICE("** esp-link ready");
+  NOTICE("** %s: ready, heap=%ld", esp_link_version, (unsigned long)system_get_free_heap_size());
 
+  // Init SNTP service
   cgiServicesSNTPInit();
-
 #ifdef MQTT
-  NOTICE("initializing MQTT");
-  mqtt_client_init();
+  if (flashConfig.mqtt_enable) {
+    NOTICE("initializing MQTT");
+    mqtt_client_init();
+  }
 #endif
-
   NOTICE("initializing user application");
   app_init();
-
-  NOTICE("waiting for work to do...");
+  NOTICE("Waiting for work to do...");
+#ifdef MEMLEAK_DEBUG
+  system_show_malloc();
+#endif
 }

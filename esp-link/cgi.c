@@ -16,6 +16,7 @@ Some random cgi routines.
 #include <esp8266.h>
 #include "cgi.h"
 #include "config.h"
+#include "web-server.h"
 
 #ifdef CGI_DBG
 #define DBG(format, ...) do { os_printf(format, ## __VA_ARGS__); } while(0)
@@ -106,18 +107,18 @@ int8_t ICACHE_FLASH_ATTR getUInt16Arg(HttpdConnData *connData, char *name, uint1
   return 1;
 }
 
-int8_t ICACHE_FLASH_ATTR getBoolArg(HttpdConnData *connData, char *name, bool *config) {
+int8_t ICACHE_FLASH_ATTR getBoolArg(HttpdConnData *connData, char *name, uint8_t *config) {
   char buff[16];
   int len = httpdFindArg(connData->getArgs, name, buff, sizeof(buff));
   if (len < 0) return 0; // not found, skip
 
   if (os_strcmp(buff, "1") == 0 || os_strcmp(buff, "true") == 0) {
-    *config = true;
+    *config = 1;
     return 1;
   }
 
   if (os_strcmp(buff, "0") == 0 || os_strcmp(buff, "false") == 0) {
-    *config = false;
+    *config = 0;
     return 1;
   }
 
@@ -193,8 +194,7 @@ int ICACHE_FLASH_ATTR cgiMenu(HttpdConnData *connData) {
   if (connData->conn==NULL) return HTTPD_CGI_DONE; // Connection aborted. Clean up.
   char buff[1024];
   // don't use jsonHeader so the response does get cached
-  httpdStartResponse(connData, 200);
-  httpdHeader(connData, "Cache-Control", "max-age=3600, must-revalidate");
+  noCacheHeaders(connData, 200);
   httpdHeader(connData, "Content-Type", "application/json");
   httpdEndHeaders(connData);
   // limit hostname to 12 chars
@@ -202,22 +202,26 @@ int ICACHE_FLASH_ATTR cgiMenu(HttpdConnData *connData) {
   os_strncpy(name, flashConfig.hostname, 12);
   name[12] = 0;
   // construct json response
-  os_sprintf(buff, 
+  os_sprintf(buff,
     "{ "
       "\"menu\": [ "
         "\"Home\", \"/home.html\", "
-        "\"WiFI\", \"/wifi/wifi.html\", "
+        "\"WiFi Station\", \"/wifi/wifiSta.html\", "
+        "\"WiFi Soft-AP\", \"/wifi/wifiAp.html\", "
         "\"&#xb5;C Console\", \"/console.html\", "
         "\"Services\", \"/services.html\", "
 #ifdef MQTT
         "\"REST/MQTT\", \"/mqtt.html\", "
 #endif
-        "\"Debug log\", \"/log.html\""
+        "\"Debug log\", \"/log.html\","
+        "\"Upgrade Firmware\", \"/flash.html\","
+        "\"Web Server\", \"/web-server.html\""
+	"%s"
       " ], "
       "\"version\": \"%s\", "
       "\"name\": \"%s\""
-    " }", 
-  esp_link_version, name);
+    " }",
+  WEB_UserPages(), esp_link_version, name);
 
   httpdSend(connData, buff, -1);
   return HTTPD_CGI_DONE;
