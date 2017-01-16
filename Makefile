@@ -192,7 +192,9 @@ TRAVIS_BRANCH?=$(shell git symbolic-ref --short HEAD --quiet)
 VERSION := $(shell (git describe --tags --match 'v*' --long --dirty || echo "no-tag") | sed -re 's/(\.0)?-/./')
 # If not on master then insert the branch name
 ifneq ($(TRAVIS_BRANCH),master)
+ifneq ($(findstring V%,$(TRAVIS_BRANCH)),)
 VERSION := $(shell echo $(VERSION) | sed -e 's/-/-$(TRAVIS_BRANCH)-/')
+endif
 endif
 VERSION :=$(VERSION)
 $(info VERSION is $(VERSION))
